@@ -1,0 +1,4 @@
+data/
+omni-backup/
+*.local
+.env

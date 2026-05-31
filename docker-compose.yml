@@ -1,0 +1,15 @@
+# For LOCAL testing only — Coolify deploys this via the Dockerfile build pack, not this file.
+# Usage:
+#   export WEBDAV_HTPASSWD_B64=$(printf '%s\n' 'jenner:$apr1$...' | base64)
+#   docker compose up --build
+#   curl -u jenner:PASS -X PROPFIND http://localhost:8080/ -H 'Depth: 1'
+services:
+  omni-webdav:
+    build: .
+    restart: unless-stopped
+    environment:
+      - WEBDAV_HTPASSWD_B64=${WEBDAV_HTPASSWD_B64}
+    volumes:
+      - ./data:/var/lib/dav
+    ports:
+      - "8080:80"
