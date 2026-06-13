@@ -18,7 +18,12 @@ RUN apt-get update \
  && a2dissite 000-default \
  && rm -rf /var/www/html \
  && mkdir -p /var/lib/dav \
- && chown -R www-data:www-data /var/lib/dav
+ && chown -R www-data:www-data /var/lib/dav \
+ # Send Apache's file logs to the container's stdout/stderr so `docker logs` / Coolify show
+ # them (Apache logs to files by default, which is why `docker logs` was empty).
+ && ln -sf /dev/stdout /var/log/apache2/access.log \
+ && ln -sf /dev/stdout /var/log/apache2/other_vhosts_access.log \
+ && ln -sf /dev/stderr /var/log/apache2/error.log
 
 COPY webdav.conf   /etc/apache2/sites-available/webdav.conf
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
