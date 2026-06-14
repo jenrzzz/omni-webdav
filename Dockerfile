@@ -13,9 +13,10 @@ FROM debian:bookworm-slim
 
 RUN apt-get update \
  # wget + curl are only here for healthchecks. Coolify injects its OWN compose-level probe that
- # uses **wget** (it overrides the image HEALTHCHECK below and fails with "wget: not found" on
- # the slim image); curl backs the explicit HEALTHCHECK. Both are tiny. Coolify's probe honours
- # the configured 401 return code — it just needs the binary present.
+ # uses **wget** (it overrides the image HEALTHCHECK below) and, on the slim image, failed with
+ # "wget: not found". Coolify's wget probe also exits non-zero on any non-2xx, so it can't accept
+ # the DAV root's 401 — that's why the /healthz endpoint (200) exists. curl backs the explicit
+ # HEALTHCHECK; both binaries are tiny.
  && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends apache2 curl wget \
  && rm -rf /var/lib/apt/lists/* \
  && a2enmod dav dav_fs auth_basic authn_file authn_core authz_core authz_user headers \
@@ -23,6 +24,9 @@ RUN apt-get update \
  && rm -rf /var/www/html \
  && mkdir -p /var/lib/dav \
  && chown -R www-data:www-data /var/lib/dav \
+ # Health endpoint payload (served unauthenticated at /healthz — see webdav.conf).
+ && mkdir -p /var/www/health \
+ && printf 'ok\n' > /var/www/health/index.html \
  # Send Apache's file logs to the container's stdout/stderr so `docker logs` / Coolify show
  # them (Apache logs to files by default, which is why `docker logs` was empty).
  && ln -sf /dev/stdout /var/log/apache2/access.log \
@@ -34,11 +38,11 @@ COPY entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh && a2ensite webdav
 
 EXPOSE 80
-# The DAV root requires auth, so an unauthenticated GET / returns 401 — that IS healthy here.
-# Check for exactly 401 (don't use `curl -f`, which would treat 401 as a failure). An explicit
-# HEALTHCHECK is deterministic regardless of Coolify's generated-command format / version.
+# Probe the unauthenticated /healthz (200). -f makes any non-2xx a failure. This mirrors what
+# Coolify's compose-level probe (which overrides this one) does, so behaviour matches whether
+# the image runs under Coolify or standalone.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-  CMD [ "$(curl -s -o /dev/null -w '%{http_code}' http://localhost/)" = "401" ] || exit 1
+  CMD curl -fsS -o /dev/null http://localhost/healthz || exit 1
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
 # apache2ctl (not bare apache2) so /etc/apache2/envvars is sourced.
 CMD ["apache2ctl", "-DFOREGROUND"]
