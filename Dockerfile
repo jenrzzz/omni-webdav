@@ -12,9 +12,11 @@
 FROM debian:bookworm-slim
 
 RUN apt-get update \
- # curl is only here for the HEALTHCHECK below (the slim image ships neither curl nor wget,
- # so Coolify's auto healthcheck would otherwise always fail).
- && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends apache2 curl \
+ # wget + curl are only here for healthchecks. Coolify injects its OWN compose-level probe that
+ # uses **wget** (it overrides the image HEALTHCHECK below and fails with "wget: not found" on
+ # the slim image); curl backs the explicit HEALTHCHECK. Both are tiny. Coolify's probe honours
+ # the configured 401 return code — it just needs the binary present.
+ && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends apache2 curl wget \
  && rm -rf /var/lib/apt/lists/* \
  && a2enmod dav dav_fs auth_basic authn_file authn_core authz_core authz_user headers \
  && a2dissite 000-default \
