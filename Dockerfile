@@ -12,7 +12,9 @@
 FROM debian:bookworm-slim
 
 RUN apt-get update \
- && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends apache2 \
+ # curl is only here for the HEALTHCHECK below (the slim image ships neither curl nor wget,
+ # so Coolify's auto healthcheck would otherwise always fail).
+ && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends apache2 curl \
  && rm -rf /var/lib/apt/lists/* \
  && a2enmod dav dav_fs auth_basic authn_file authn_core authz_core authz_user headers \
  && a2dissite 000-default \
@@ -30,6 +32,11 @@ COPY entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh && a2ensite webdav
 
 EXPOSE 80
+# The DAV root requires auth, so an unauthenticated GET / returns 401 — that IS healthy here.
+# Check for exactly 401 (don't use `curl -f`, which would treat 401 as a failure). An explicit
+# HEALTHCHECK is deterministic regardless of Coolify's generated-command format / version.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+  CMD [ "$(curl -s -o /dev/null -w '%{http_code}' http://localhost/)" = "401" ] || exit 1
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
 # apache2ctl (not bare apache2) so /etc/apache2/envvars is sourced.
 CMD ["apache2ctl", "-DFOREGROUND"]
